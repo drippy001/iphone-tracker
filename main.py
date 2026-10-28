@@ -9,7 +9,7 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 STATE_FILE = "status.json"
 
 TARGET_PARTS = ["MK1E4LL/A", "MK1F4LL/A"] 
-ZIP_CODES = ["57104", "92805"]
+ZIP_CODES = ["68118", "92805"]
 
 def send_telegram(msg):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
