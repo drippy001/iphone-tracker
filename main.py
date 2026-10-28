@@ -8,7 +8,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 STATE_FILE = "status.json"
 
-TARGET_PARTS = ["MK1E4LL/A", "MK1F4LL/A"] 
+TARGET_PARTS = ["MK1E4LL/A", "MK1F4LL/A", "MJW64LL/A"]
 ZIP_CODES = ["68118", "92805"]
 
 def send_telegram(msg):
