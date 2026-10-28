@@ -70,9 +70,6 @@ def load_state():
 def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
-
 if __name__ == "__main__":
-    if __name__ == "__main__":
     send_telegram("🚨 Test: Your GitHub tracker is connected and working!")
-    check_stock()
     check_stock()
