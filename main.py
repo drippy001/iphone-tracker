@@ -1,14 +1,15 @@
 import os
 import json
-import re
 import requests
-from playwright.sync_api import sync_playwright
+from datetime import datetime
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 STATE_FILE = "status.json"
-TARGET_PARTS = ["MK1E4LL/A", "MK1F4LL/A", "MK1G4LL/A", "MK1H4LL/A"]
-ZIP_CODES = ["68118", "92805"]
+
+# iPhone 18 Pro Max Burgundy (256GB and 512GB)
+TARGET_PARTS = ["MJW64LL/A", "MJWA4LL/A"] 
+ZIP_CODES = ["92805", "68118"] # Anaheim and Omaha
 
 def send_telegram(msg):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -17,48 +18,54 @@ def send_telegram(msg):
     requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": msg}, timeout=10)
 
 def check_stock():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        
+    previous_data = load_state()
+    alerts = []
+    
+    # Headers make the request look like a real browser
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+        "Accept": "application/json"
+    }
+
+    for part in TARGET_PARTS:
         for zip_code in ZIP_CODES:
-            url = f"https://www.apple.com/shop/buy-iphone/iphone-duo?location={zip_code}"
-            page.goto(url, wait_until="networkidle", timeout=60000)
+            key = f"{part}_{zip_code}"
             
-            html = page.content()
-            match = re.search(r'window\.REFURB_GRID_BOOTSTRAP\s*=\s*(\{.+?\});', html, re.DOTALL)
+            # This is Apple's exact inventory API used by their website
+            url = f"https://www.apple.com/shop/fulfillment-messages?parts.0={part}&location={zip_code}"
             
-            if not match:
-                print(f"Could not find inventory data for ZIP {zip_code}")
-                continue
+            try:
+                response = requests.get(url, headers=headers, timeout=15)
+                response.raise_for_status()
+                data = response.json()
                 
-            data = json.loads(match.group(1))
-            tiles = data.get("tiles", [])
-            
-            current_stock = {}
-            for tile in tiles:
-                part = tile.get("partNumber")
-                if part in TARGET_PARTS:
-                    current_stock[part] = True
-                    
-            previous_stock = load_state()
-            alerts = []
-            
-            for part in TARGET_PARTS:
-                was_in_stock = previous_stock.get(f"{part}_{zip_code}", False)
-                is_in_stock = current_stock.get(part, False)
+                # Dig into Apple's JSON response to find the stores
+                stores = data.get("body", {}).get("content", {}).get("pickupMessage", {}).get("stores", [])
+                
+                in_stock_stores = []
+                for store in stores:
+                    if store.get("pickupDisplay") == "available":
+                        in_stock_stores.append(store.get("storeName"))
+                
+                is_in_stock = len(in_stock_stores) > 0
+                old_state = previous_data.get(key, {"in_stock": False})
+                was_in_stock = old_state.get("in_stock", False)
                 
                 if is_in_stock and not was_in_stock:
-                    alerts.append(f"🚨 STOCK ALERT: {part} is available near {zip_code}!\nBuy here: {url}")
-                
-                previous_stock[f"{part}_{zip_code}"] = is_in_stock
-                
-            save_state(previous_stock)
-            
-            for alert in alerts:
-                send_telegram(alert)
-                
-        browser.close()
+                    stores_str = ", ".join(in_stock_stores)
+                    alerts.append(f"🚨 STOCK ALERT: {part} is available at {stores_str} (ZIP {zip_code})!\nBuy here: https://www.apple.com/shop/buy-iphone/iphone-18-pro?location={zip_code}")
+                    
+                previous_data[key] = {"in_stock": is_in_stock, "stores": in_stock_stores}
+                print(f"Checked {part} in {zip_code}: {'IN STOCK' if is_in_stock else 'Out of Stock'}")
+
+            except Exception as e:
+                print(f"Error checking {part} in {zip_code}: {e}")
+                continue
+
+    save_state(previous_data)
+    
+    for alert in alerts:
+        send_telegram(alert)
 
 def load_state():
     if os.path.exists(STATE_FILE):
@@ -69,5 +76,6 @@ def load_state():
 def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
+
 if __name__ == "__main__":
     check_stock()
